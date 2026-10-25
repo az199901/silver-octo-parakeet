@@ -1243,3 +1243,52 @@
 .ev-detail .field-label { margin-bottom: 6px; }
 .ev-detail .chips { margin-bottom: 8px; }
 .ev-detail .ev-more + .ev-more { margin-top: 8px; }
+
+/* ---------- 18. 搅拌机骨架（v0.11） ---------- */
+.mx-title { font-size: 13px; font-weight: 600; margin: 4px 0 8px; }
+.mx-card {
+  border: 1.5px dashed rgba(120, 130, 170, 0.45);
+  border-radius: 14px; padding: 10px 12px; margin-bottom: 10px;
+  background: rgba(255, 255, 255, 0.35); opacity: 0.9;
+}
+.mx-card-head {
+  display: flex; justify-content: space-between; align-items: center;
+  font-weight: 600; font-size: 13px; margin-bottom: 6px;
+}
+.mx-tag {
+  font-size: 11px; font-weight: 400; padding: 2px 8px; border-radius: 999px;
+  background: rgba(143, 168, 240, 0.2); color: #5a6bb5;
+}
+.mx-slot {
+  display: flex; gap: 10px; align-items: center; font-size: 12px;
+  padding: 6px 0; border-top: 1px dashed rgba(120, 130, 170, 0.25);
+}
+.mx-slot b { flex: 0 0 62px; font-weight: 600; }
+.mx-slot span { flex: 1; color: rgba(60, 70, 100, 0.7); }
+.mx-note { font-size: 12px; line-height: 1.8; color: rgba(60, 70, 100, 0.7); margin-top: 10px; }
+
+/* ---------- 19. 更新日志（v0.11.1） ---------- */
+.cl-tools { display: flex; gap: 14px; margin: 0 2px 10px; }
+.cl-item {
+  background: rgba(255, 255, 255, 0.4); border-radius: 14px;
+  padding: 10px 12px; margin-bottom: 10px;
+}
+.cl-item summary { font-weight: 600; font-size: 14px; line-height: 1.6; cursor: pointer; }
+.cl-ver {
+  display: inline-block; font-size: 11px; font-weight: 400; padding: 1px 7px;
+  margin-right: 6px; border-radius: 999px;
+  background: rgba(143, 168, 240, 0.25); color: #5a6bb5;
+}
+.cl-body { margin-top: 8px; font-size: 13px; line-height: 1.8; }
+.cl-body p { margin: 6px 0; }
+.cl-body ul { margin: 6px 0; padding-left: 18px; }
+.cl-body code {
+  font-size: 12px; padding: 1px 4px; border-radius: 4px;
+  background: rgba(120, 130, 170, 0.15);
+}
+.cl-quote {
+  font-size: 12px; opacity: 0.8; margin: 6px 0; padding-left: 8px;
+  border-left: 3px solid rgba(143, 168, 240, 0.5);
+}
+.cl-h { font-weight: 600; margin-top: 8px; }
+.cl-row { font-size: 12px; margin: 3px 0; opacity: 0.9; }

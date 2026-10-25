@@ -1498,16 +1498,26 @@ async function runAI(action, payload = {}) {
 /* 当前候选（采用时按序号取） */
 let currentResults = [];
 
+/* 结果框在哪：角色页用 #resultsWrap，章节页用 #chapterResults。
+   （v0.11 修 bug：以前只有 #resultsWrap，它在「角色详情」页里，
+     章节页点 💡 后结果 / 报错全写进了看不见的那一页，看起来就是"AI 不能用"） */
+function resultsEl() {
+  const inChapter = !!(activeTarget && activeTarget.chapterId);
+  return document.getElementById(inChapter ? 'chapterResults' : 'resultsWrap') ||
+         document.getElementById('resultsWrap');
+}
+
 /* 显示候选列表 */
 function showResults(list) {
   currentResults = list.slice();
+  const wrap = resultsEl();
 
   if (!list.length) {
-    resultsWrap.innerHTML = '';
+    wrap.innerHTML = '';
     return;
   }
 
-  resultsWrap.innerHTML = list.map((text, i) => `
+  wrap.innerHTML = list.map((text, i) => `
     <div class="result-card">
       <div class="result-label">方案 ${i + 1} / ${list.length}</div>
       <div class="result-text">${esc(text)}</div>
@@ -1519,31 +1529,35 @@ function showResults(list) {
     <button class="btn btn-ghost discard-all" data-discard="1" type="button">全部放弃</button>
   `;
 
-  resultsWrap.querySelectorAll('[data-adopt]').forEach(btn => {
+  wrap.querySelectorAll('[data-adopt]').forEach(btn => {
     btn.addEventListener('click', () => adoptResult(parseInt(btn.dataset.adopt, 10)));
   });
-  const discardAll = resultsWrap.querySelector('[data-discard]');
+  const discardAll = wrap.querySelector('[data-discard]');
   if (discardAll) discardAll.addEventListener('click', clearResults);
 
-  resultsWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 /* 只显示一条提示（不能采用） */
 function showMessage(text) {
   currentResults = [];
-  resultsWrap.innerHTML = `
+  const wrap = resultsEl();
+  wrap.innerHTML = `
     <div class="result-card">
       <div class="result-label">提示</div>
       <div class="result-text">${esc(text)}</div>
     </div>
   `;
-  resultsWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-/* 清掉所有候选 */
+/* 清掉所有候选（两个结果框都清，避免换页后残留） */
 function clearResults() {
   currentResults = [];
-  resultsWrap.innerHTML = '';
+  ['resultsWrap', 'chapterResults'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.innerHTML = '';
+  });
 }
 
 /* 采用第 index 条：写回当前字段 */
@@ -2339,6 +2353,7 @@ function newChapterState() {
     charIds: [],       /* 出场人物 */
     regionId: '',      /* 发生地点（地图里的某个区域） */
     itemIds: [],       /* 出场道具 */
+    eventIds: [],      /* 本章事件：这一章要写「发生了什么」（来自事件库，v0.11） */
     fore: [],          /* 伏笔：[{ id, mode: 'plant' | 'push' | 'payoff' }] */
     draft: [],         /* AI 总结出来、还没写回素材库的新状态 */
     summary: ''        /* 本章状态一句话 */
@@ -2352,6 +2367,7 @@ function chapterState(ch) {
   const s = ch.state;
   s.charIds = Array.isArray(s.charIds) ? s.charIds : [];
   s.itemIds = Array.isArray(s.itemIds) ? s.itemIds : [];
+  s.eventIds = Array.isArray(s.eventIds) ? s.eventIds : [];
   s.fore = Array.isArray(s.fore) ? s.fore : [];
   s.draft = Array.isArray(s.draft) ? s.draft : [];
   if (typeof s.regionId !== 'string') s.regionId = '';
@@ -2404,6 +2420,11 @@ function renderChapter() {
       <button class="btn btn-ghost" id="genStateBtn" type="button" style="margin-top:10px;">总结本章状态</button>
     </div>
 
+    <details class="block mixer" id="mixerBox" style="margin-bottom:14px;">
+      <summary>🥣 搅拌机 <span class="hint">骨架 · 开发中</span></summary>
+      <div id="mixerBody"></div>
+    </details>
+
     <div class="field">
       <div class="field-label">
         <span>正文</span>
@@ -2414,6 +2435,7 @@ function renderChapter() {
       <textarea class="field-input body-input" data-cf="text" rows="16"
         placeholder="就从这里开始写。写累了点上面的 💡，让它看看你写的这段。"></textarea>
     </div>
+    <div id="chapterResults"></div>
 
     <div class="panel" style="margin-bottom:0;">
       <div class="panel-label">本章总结 <span class="hint">喂给 AI 的记忆，防乱写</span></div>
@@ -2516,14 +2538,18 @@ function renderChapterState() {
     .map(id => db.items.find(i => i.id === id))
     .filter(Boolean);
   const rg = s.regionId ? regionById(s.regionId) : null;
+  const evs = s.eventIds
+    .map(id => db.events.find(e => e.id === id))
+    .filter(Boolean);
   const fores = s.fore
     .map(f => ({ f: f, e: db.events.find(x => x.id === f.id) }))
     .filter(x => x.e);
 
-  const any = chars.length || items.length || rg || fores.length;
+  const any = chars.length || items.length || rg || evs.length || fores.length;
 
   if (!any) {
-    box.innerHTML = '<div class="empty" style="padding:8px 0 12px;">这一章<b>谁出场、在哪、用了什么、哪条伏笔要走</b>，从这里调取。</div>';
+    box.innerHTML = '<div class="empty" style="padding:8px 0 12px;">这一章<b>谁出场、在哪、用了什么、发生什么、哪条伏笔要走</b>，从这里调取。</div>';
+    renderMixerSkeleton();
     return;
   }
 
@@ -2537,12 +2563,16 @@ function renderChapterState() {
     stateLine('🗡️', '出场道具',
       items.map(i => stateChip('📦 ' + (i.name || '未命名'), 'item', i.id)),
       '还没勾道具'),
+    stateLine('🎬', '本章事件',
+      evs.map(e => stateChip('🎬 ' + (e.title || '未命名事件'), 'event', e.id)),
+      '还没选事件'),
     stateLine('🧵', '伏笔状态',
       fores.map(x => foreChip(x.e, x.f.mode)),
       '这一章没有伏笔')
   ].join('');
 
   bindStateBox(box);
+  renderMixerSkeleton();   /* 搅拌机的进料口跟着工作台同步 */
 }
 
 function stateLine(icon, label, chips, emptyText) {
@@ -2603,6 +2633,7 @@ function removeFromState(ch, kind, id) {
   const s = chapterState(ch);
   if (kind === 'char') s.charIds = s.charIds.filter(x => x !== id);
   if (kind === 'item') s.itemIds = s.itemIds.filter(x => x !== id);
+  if (kind === 'event') s.eventIds = s.eventIds.filter(x => x !== id);
   if (kind === 'region' && s.regionId === id) s.regionId = '';
   if (kind === 'fore') s.fore = s.fore.filter(f => f.id !== id);
   saveDB();
@@ -2623,6 +2654,7 @@ function openStateSheet() {
   const pick = {
     chars: new Set(s.charIds),
     items: new Set(s.itemIds),
+    events: new Set(s.eventIds),
     region: s.regionId || '',
     fore: new Map(s.fore.map(f => [f.id, f.mode || 'plant']))
   };
@@ -2631,6 +2663,7 @@ function openStateSheet() {
     chars: db.characters.filter(c => c.bookId === book.id),
     items: db.items.filter(i => i.bookId === book.id),
     regions: bookRegions(book.id),
+    events: bookEvents(book.id),
     fores: bookForeshadows(book.id)
   };
 
@@ -2656,6 +2689,10 @@ function openStateSheet() {
         stateSection('🗡️', '出场道具', 'items', pool.items.map(i => ({
           id: i.id, text: i.name || '未命名', sub: i.line || '', on: pick.items.has(i.id)
         })), keyword),
+        stateSection('🎬', '本章事件', 'events', pool.events.map(e => ({
+          id: e.id, text: e.title || '未命名事件',
+          sub: (EV_STATUS[e.status] || EV_STATUS.seed).label, on: pick.events.has(e.id)
+        })), keyword),
         stateSection('🧵', '伏笔', 'fore', pool.fores.map(e => ({
           id: e.id, text: e.title || '未命名伏笔',
           sub: e.payoffEventId ? '已回收' : '未回收',
@@ -2671,6 +2708,8 @@ function openStateSheet() {
             if (pick.chars.has(id)) pick.chars.delete(id); else pick.chars.add(id);
           } else if (kind === 'items') {
             if (pick.items.has(id)) pick.items.delete(id); else pick.items.add(id);
+          } else if (kind === 'events') {
+            if (pick.events.has(id)) pick.events.delete(id); else pick.events.add(id);
           } else if (kind === 'region') {
             pick.region = pick.region === id ? '' : id;   /* 地点只能选一个 */
           } else if (kind === 'fore') {
@@ -2695,6 +2734,7 @@ function openStateSheet() {
       const st = chapterState(cur);
       st.charIds = Array.from(pick.chars);
       st.itemIds = Array.from(pick.items);
+      st.eventIds = Array.from(pick.events);
       st.regionId = pick.region;
       /* 保住原来已经调过的伏笔进度 */
       st.fore = Array.from(pick.fore.entries()).map(([id, mode]) => {
@@ -3028,6 +3068,11 @@ function buildChapterStateText(ch) {
     lines.push('出场道具：' + items.map(i => (i.name || '未命名') + (i.line ? '（' + i.line + '）' : '')).join('、'));
   }
 
+  const evs = s.eventIds.map(id => db.events.find(e => e.id === id)).filter(Boolean);
+  if (evs.length) {
+    lines.push('本章事件（这一章要写的）：' + evs.map(e => (e.title || '未命名') + (e.detail ? '（' + e.detail.slice(0, 40) + '）' : '')).join('、'));
+  }
+
   const fores = s.fore
     .map(f => ({ f: f, e: db.events.find(x => x.id === f.id) }))
     .filter(x => x.e);
@@ -3321,6 +3366,79 @@ function showReviewMessage(text) {
   wrap.innerHTML = `<div class="review-panel"><div class="review-head">审稿</div>
     <div class="empty" style="white-space:pre-wrap;text-align:left;">${esc(text)}</div></div>`;
   wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+/* ============================================================
+   K3d. 搅拌机（骨架，v0.11）
+   ------------------------------------------------------------
+   位置：章节页，「本章状态」下面、正文上面（折叠块，默认收起）。
+   目标：把工作台里勾好的素材「连线」成一张张场景卡，按卡生成正文。
+   结构：进料口（工作台，自动同步）→ 场景卡（连线 + 字数 + 风格）→ 出料口（候选 → 采用到正文）
+   现状：只有骨架。进料口是真的（读工作台），场景卡和生成是示意，按钮是灰的。
+   设计细节见 DESIGN.md「搅拌机」一节。
+   预留数据：ch.mixer = { cards: [] }（还没创建，做功能时再补，老章节不用迁移）
+   ============================================================ */
+
+/* 进料口：搅拌机以后只从这里读素材（读的就是工作台 ch.state） */
+function mixerIntake(ch) {
+  const s = chapterState(ch);
+  const rg = s.regionId ? regionById(s.regionId) : null;
+  return {
+    chars:  s.charIds.map(id => db.characters.find(c => c.id === id)).filter(Boolean),
+    region: rg,
+    items:  s.itemIds.map(id => db.items.find(i => i.id === id)).filter(Boolean),
+    events: s.eventIds.map(id => db.events.find(e => e.id === id)).filter(Boolean),
+    fores:  s.fore.map(f => ({ f: f, e: db.events.find(x => x.id === f.id) })).filter(x => x.e)
+  };
+}
+
+function renderMixerSkeleton() {
+  const box = document.getElementById('mixerBody');
+  const ch = currentChapter();
+  if (!box || !ch) return;
+  const m = mixerIntake(ch);
+
+  const line = (icon, label, names, emptyText) => `
+    <div class="st-line">
+      <div class="st-head"><span class="st-icon">${icon}</span>${label}</div>
+      <div class="st-chips">
+        ${names.length
+          ? names.map(n => '<span class="st-chip"><span class="st-chip-t">' + esc(n) + '</span></span>').join('')
+          : '<span class="st-empty">' + emptyText + '</span>'}
+      </div>
+    </div>`;
+
+  box.innerHTML = `
+    <div style="padding:12px 14px 14px;">
+      <div class="mx-title">① 进料口 <span class="hint">自动同步工作台</span></div>
+      ${line('👥', '人物', m.chars.map(c => c.name || '未命名'), '工作台还没勾人')}
+      ${line('🗺️', '地点', m.region ? [regionPath(m.region.id)] : [], '工作台还没选地点')}
+      ${line('🗡️', '道具', m.items.map(i => i.name || '未命名'), '工作台还没勾道具')}
+      ${line('🎬', '事件', m.events.map(e => e.title || '未命名事件'), '工作台还没选事件')}
+      ${line('🧵', '伏笔', m.fores.map(x => (x.e.title || '未命名') + '·' + foreModeLabel(x.f.mode)), '本章没有伏笔')}
+
+      <div class="mx-title" style="margin-top:14px;">② 场景卡 <span class="hint">把素材连成一幕（示意）</span></div>
+      <div class="mx-card">
+        <div class="mx-card-head">🎬 场景 1 <span class="mx-tag">示意 · 还不能用</span></div>
+        <div class="mx-slot"><b>在哪</b><span>从上面的「地点」里选一个</span></div>
+        <div class="mx-slot"><b>谁在场</b><span>从「人物」里勾（可以只勾其中几个）</span></div>
+        <div class="mx-slot"><b>用什么</b><span>从「道具」里勾，写清谁拿着</span></div>
+        <div class="mx-slot"><b>发生什么</b><span>从「事件」里选一条，或手写一句</span></div>
+        <div class="mx-slot"><b>伏笔</b><span>埋下 / 推进 / 回收（可选）</span></div>
+        <div class="mx-slot"><b>写多少字</b><span><input class="field-input" type="number" placeholder="800" disabled style="width:90px;padding:4px 8px;"></span></div>
+        <div class="mx-slot"><b>什么风格</b><span>从风格库选（可选）</span></div>
+        <div class="mx-slot"><b>怎么接</b><span>接上一幕结尾 / 接正文末尾 / 另起</span></div>
+      </div>
+      <button class="btn btn-ghost" type="button" disabled style="margin-bottom:12px;">＋ 新建场景卡（开发中）</button>
+
+      <div class="mx-title">③ 出料口 <span class="hint">生成 → 候选 → 采用到正文</span></div>
+      <button class="btn btn-primary" type="button" disabled>生成这一幕（开发中）</button>
+      <div class="mx-note">
+        思路：场景卡一张一张排成链，上一张的结尾会自动带给下一张当"前情"，所以不会断。
+        素材只从工作台选，不在这里重新输入，改一处全章同步。
+      </div>
+    </div>
+  `;
 }
 
 /* ============================================================
@@ -4952,6 +5070,93 @@ function openSettings() {
   renderUsage();
   showView('view-settings');
 }
+
+/* ============================================================
+   L4. 更新日志（设置 → 更新日志）
+   ------------------------------------------------------------
+   CHANGELOG_MD 是 CHANGELOG.md 的完整原文，构建时嵌入，离线可看。
+   ⚠️ 只能由脚本整行替换生成，不要手改（见 MAP 约定 10）。
+   ============================================================ */
+const CHANGELOG_MD = "# 变更日志 CHANGELOG\n\n> 每次改动记一条：**改了什么、动了哪些文件、哪里最容易出 bug**。\n> 出问题时，从最近一条往前看。\n\n---\n\n## v0.11.1 · 设置里加「更新日志」\n\n- 设置页新增「📜 查看更新日志」，点进去按版本折叠展示全部改动记录（从 v0.1 到现在，最新的在最上面，第一条默认展开）。\n- 数据做法：`app.js` 的 L4 区有一个常量 `CHANGELOG_MD`，就是 `CHANGELOG.md` 的完整原文。**嵌在代码里，离线可看**，不用多传文件，也不靠 fetch（iOS 文件预览里 fetch 会失败）。\n- 代价：以后每改一次 `CHANGELOG.md`，都要重新生成 `CHANGELOG_MD` 这一行（见 MAP 约定 10），否则 App 里看到的是旧版。\n- 渲染只认：标题、列表、引用、表格、粗体、行内代码，够看，不是完整 Markdown。\n- 动了：`index.html`（设置页按钮 + 新视图 `view-changelog`）、`app.js`（新增 L4 区）、`style.css`（第 19 节 `.cl-*`）。\n- 最容易出 bug：`CHANGELOG_MD` 那一行只能由脚本生成，**不要手改**，手改引号或反斜杠会让整个 app.js 语法报错、白屏。\n\n---\n\n## v0.11 · 修「正文 AI 看不见结果」+ 工作台加「本章事件」+ 搅拌机骨架\n\n> **给新窗口 AI 的一句话**：这版动了章节页（正文）的三处——AI 结果框、工作台、新增的搅拌机面板。\n> 本版**没有运行测试**（作者要求直接交付），改动只做过语法检查，请先按 `TEST.md` 第 15 节在真机点一遍。\n\n**1. 修 bug：正文里的 AI（润色/扩写/风格/其他）点了没任何反应**\n- 根因：`#resultsWrap`（候选结果 / 提示 / 报错的显示位置）在 `index.html` 里**只有一个，且在「角色详情」页里**。\n  章节页点 💡 之后，结果、\"还没填 API Key\"之类的报错全写进了看不见的那一页 → 看起来就是\"AI 不能用\"。\n- 修法：`app.js` F 区新增 `resultsEl()`——章节场景（`activeTarget.chapterId` 有值）用新增的 `#chapterResults`\n  （渲染在正文输入框正下方），其余场景仍用 `#resultsWrap`。`showResults / showMessage / clearResults` 全部改走它；\n  `clearResults()` 两个框都清，避免换页残留。\n- 注意：`#chapterResults` 在 `renderChapter()` 的模板里，章节页整页重绘会清掉未采用的候选（目前只有打开章节时才重绘）。\n- 没动：角色页、体检（`runCharCheck` 等直接用 `#resultsWrap`，本来就在角色页里）。\n\n**2. 工作台（本章状态）加了第五类素材：本章事件**\n- 以前只能调 人物 / 地点 / 道具 / 伏笔，**缺\"这一章要写发生了什么\"**——这正是正文生成最需要的一项。\n- 数据：`ch.state.eventIds: []`（`newChapterState()` 与 `chapterState()` 自动补，老章节不用迁移）。\n- 改动点：`renderChapterState()` 多一行「🎬 本章事件」；`openStateSheet()` 抽屉多一段（来自 `bookEvents()`，任意层级的事件都能选）；\n  `removeFromState()` 支持 `event`；`buildChapterStateText()` 把本章事件（标题 + 经过前 40 字）喂给 AI。\n- **刻意没做**：本章事件**不**参与 K3c「总结本章状态 → 写回素材库」（`buildStateMaterialList()` 没加），避免无测试情况下动写回逻辑。\n- 关于\"相加\"：人物 + 地点 + 道具 + 事件 + 伏笔 **本来就会全部拼进 AI 的 system 提示词**（`buildSystemPrompt()` → `buildChapterStateText()`），\n  搅拌机的进料口会读同一份数据。\n\n**3. 新增：搅拌机（骨架）**\n- 位置：章节页「本章状态」之下、「正文」之上，折叠块，默认收起（`#mixerBox` / `#mixerBody`）。\n- 三段：① 进料口（**真数据**，自动同步工作台，来自 `mixerIntake(ch)`）② 场景卡（示意，灰的）③ 出料口（按钮灰的）。\n- 新函数：`mixerIntake(ch)`（以后搅拌机**只从这里读素材**）、`renderMixerSkeleton()`（由 `renderChapterState()` 末尾调用，所以工作台一变它就变）。\n- 预留数据：`ch.mixer = { cards: [] }`，**尚未创建**，做功能时再补。\n- 完整设计、字段、连线规则、分步计划见 `DESIGN.md`「搅拌机」一节。\n- 动了：`app.js`（F 区结果框、K3 `renderChapter` 模板、K3b 工作台、新增 K3d）、`style.css`（第 18 节 `.mx-*`）。\n\n**最容易出 bug 的地方**\n- `renderChapter()` 模板里同时多了 `#mixerBox` 和 `#chapterResults`，改模板时别删。\n- `renderChapterState()` 有两个出口（没素材 / 有素材），**两个出口都要调 `renderMixerSkeleton()`**。\n- 新增 `bookEvents()` 在抽屉里列的是整本书全部事件，事件很多时抽屉会长（有搜索框兜底）。\n\n**仍未做**：搅拌机真功能；事件详情里的 AI 灯泡；章节纲领；因果连线；第一印象字段。\n\n---\n\n## v0.10.1 · 修备份丢数据\n\n- **bug**：导出只带书/角色/风格/提示词/章节/素材，**事件、地图、道具（含伏笔）没导出**，导入也不恢复 → 换设备会丢。\n- 修：导出补上 `events / regions / items`（备份 version 7）；导入同样恢复它们。\n- 导入前先校验 → `confirm` 确认 → 把本机数据另存一份到 `mynovel_v1_before_import` → 再覆盖。\n- 导入旧版备份（没有这三项）：本机的这三项保持原样，并弹窗提示，不会被清空。\n- 动了：`app.js` L2 区（`buildExportData` / `validateImportData` / `applyImportData` / `handleImportFile`）。\n- 教训：**以后给 `db` 加新数组，必须同时改 `buildExportData()` 和 `applyImportData()`**。\n\n---\n\n## v0.10 · 事件详情面板装修 + 事件接地图\n\n- **详情骨架 → 真表单**：标题 / 状态（三选一）/ 经过 常驻；折叠块：因果（起因·结果·影响）、谁在哪（参与者·地点）、出现章节、伏笔。输入即自动保存（防抖 250ms）。\n- **地点接地图**：事件新增 `regionId`（地图区域 id），区域改名事件自动同步；卡片显示区域短名，详情显示完整路径；旧的手写 `placeText` 仍可显示，选了区域后被替换。\n- **反查**：地图里当前区域名片显示\"N 件事\"（含下级小区域）。\n- **删区域**：级联清掉事件上指向它的 `regionId`（不留悬空引用）。\n- **打字不丢键盘**：详情只在选中事件变化 / 点选项时重绘，打字时只局部刷新那一张卡；输入框用 `data-evf`（避开 `data-ev` 与 `data-field` 的老坑）。\n- **章节**：`chapters[]` 多选，`chapterId` 取最早一章（老虎机排序用）。\n- **伏笔开关**：与伏笔模块同一份数据；取消时同时清回收信息。\n- 动了：`app.js`（`renderEventDetail` 重写、`slotCardInner` 抽出、三个选择抽屉、`regionEventsOf`、`deleteRegionCascade`、键盘让位）、`style.css`（第 17 节）。\n- 最容易出 bug：`renderEventDetail()` 会整块重绘，**不要在输入框 `input` 事件里调它**；改章节会触发 `renderEventLib()` 重排。\n\n---\n\n## v0.9.2 · 用提示词创建角色\n\n- 角色列表右上角新增 ✨：选分类 + 写一句描述 → AI 按角色标准出 1~3 张卡 → 预览 → 一键添加（可单个/全部）。\n- 提示词分「通用标准 + 每个分类补充」，存 `db.prompts.tasks`，界面内可改、可恢复默认；JSON 输出格式写死。\n- 自动带上世界规则与本书已有角色（防重名）。\n- 动了：`app.js`（新增 D2 区、`defaultPrompts` 加 5 条）、`index.html`（列表头部加按钮）。\n- 最容易出 bug：AI 返回非 JSON 时走 `parseJSONBlock`，失败会显示「出错了」而不是白屏。\n\n---\n\n## v0.9.1 · 修「采用后输入框不刷新」\n\n- `app.js`：`targetFromCharField().set()`、`applyPolishItem()` 的选择器限定为 textarea/input（原先误选 💡 按钮）。详见 ISSUES 问题 8。\n\n---\n\n## v0.9 · 本章状态工作台 + 三个 bug 修复（本次）\n\n**改了什么**\n\n1. **正文上方「事件工作台」→「本章状态」**\n   - 不再是\"给章节挂几条文字事件\"，改成**从素材库调取**：出场人物 / 发生地点 / 出场道具 / 伏笔状态\n   - 点「＋ 调取素材」→ 抽屉里四段分别勾选，带搜索框；地点是**单选**（一章一个主场景）\n   - 勾完回到工作台，按\"谁 / 在哪 / 用了什么 / 伏笔怎么走\"分行显示成 chip，**点 × 就能撤**\n   - 伏笔 chip 上的徽章可以点：**埋下 → 推进 → 回收** 循环切换\n\n2. **总结 → 写回素材库（本版核心）**\n   - 点「总结本章状态」：AI 读完正文，只输出 JSON，**id 只能从本章清单里挑**（编造的 id 会被程序丢掉）\n   - 结果先变成\"待写回\"卡片，作者逐条决定：**写回素材库 / 提升为正式设定 / 丢弃**，也可以「全部写回」\n   - 写回 = 在素材上**追加一条状态记录**（`states: [{ chapterId, chapterTitle, text, promoted, at }]`），\n     **不改原始设定**；点「提升为正式设定」才追加进正式字段（角色→备注、道具/区域→描述、伏笔→详情），带 `【第N章后】` 章节戳\n   - 伏笔标\"回收\" → 自动写 `payoffChapterId` 并把事件状态改成 `done`（**回收点可以是章节，不必先有一条事件**）\n   - 状态记录在四个地方能看到：角色详情「状态记录」折叠块、道具抽屉、区域抽屉、伏笔列表副标题\n\n3. **本章状态喂给 AI**\n   - `buildSystemPrompt()` 的章节场景新增 `【本章状态】`：出场人物 / 地点 / 道具 / 伏笔 + 每个人物最近一条状态\n   - 作用：扩写、润色、风格都不会把\"没调进来的角色\"硬塞进这一章\n\n4. **修 bug**\n   - **润色 / 扩写 / 风格 / 其他 / 导出 全部点了没反应**：`runAI()` 和 `exportJSON()` 里调了 `track()`，\n     但这个函数**从来没定义** → 每次都 `ReferenceError`。已补 `track()`（写进 `db.usage`）。\n   - **正文的 👁「看这次会发给 AI 什么」打不开**：`buildSystemPrompt()` 里 `db.books.find(b => b.id === ch.bookId)`，\n     正文场景传进来的 `ch` 是 `null`（`targetChar()` 只认角色）→ 直接抛错。已改成 `ch ? ch.bookId : payload.bookId`。\n     `buildCharCard()` / `buildRelationsText()` 也加了 `ch` 保护。**同一行也是\"正文润色没实装\"的真正原因。**\n   - **事件老虎机最后一条选不中**：轨道没有上下留白，最后一张最多滚到下沿、到不了中线，\n     `pickCenteredCard()` 永远选倒数第二张。已加 `fitSlotPadding()`（留白 = 半个容器 − 半张卡，随窗口重算），\n     并给 `pickCenteredCard()` 加\"滚到顶/滚到底直接认第一张/最后一张\"的兜底。\n\n**动了哪些文件**\n\n| 文件 | 改动 |\n|---|---|\n| `app.js` | A 区补 `track()`；F 区 `buildSystemPrompt` 空 `ch` 保护 + 注入本章状态；K3 区新增 `newChapter` / `newChapterState` / `chapterState`；新增 **K3b（工作台 + 抽屉）**、**K3c（总结 + 写回）**；K4 区加 `fitSlotPadding()` + 选中兜底；K5/K6/K7 加状态记录展示 |\n| `style.css` | 新增第 16 节：本章状态（`.st-*`、`.draft-*`、`.st-hist*`） |\n| `tests/smoke6.js` | 新增：本章状态 30 项冒烟测试（含三个 bug 的回归） |\n| `MAP.md` / `CHANGELOG.md` / `TEST.md` | 同步 |\n\n**最容易出 bug 的地方**\n\n- `ch.state` 是**懒补**的：老章节第一次打开才创建。任何新函数读它都必须走 `chapterState(ch)`，**别直接读 `ch.state.charIds`**\n- 写回只认\"本章清单里的 id\"：先调取素材再总结，否则 AI 结果会被全部丢掉（这是故意的，防止 AI 编素材）\n- `promoteStateToSetting()` 是**追加**不是覆盖，别改成赋值\n\n---\n\n## v0.8 · 地图（区域层级）\n\n**改了什么**\n\n1. **素材库新增「地图」**（替换原来的「地点 · 即将支持」占位行）\n   - 一本书一张地图，**一本书内可以有多个顶层区域**（大陆 / 城市 / 城外…）\n   - 点区域 → 钻进去看它下面的小区域，**可以一直往下钻**（大陆 → 国家 → 城市 → 街区 → 场景）\n   - 数据结构：`regions: [{ id, bookId, parentId, name, vibe, desc }]`，和事件库同一套 `parentId` 思路\n   - 老数据没有 `regions` 字段 → 自动补成空数组，不用迁移\n\n2. **区域只有三个字段（按\"写小说时真的会用\"来定）**\n   - `name` 名字：雾都 / 城南 / 旧桥\n   - `vibe` 一句话氛围：**阴湿、逼仄、闻得到煤灰味**（列表上直接显示这句，一眼找到感觉）\n   - `desc` 详细：这里有什么、谁住、能发生什么事\n\n3. **界面（手机优先）**\n   - 第一屏：顶层区域列表（复用 `.row`，一行一个：图标 + 名字 + 氛围 + 子区域数）\n   - 钻进后：面包屑 `‹ 上一级｜雾都 / 城南｜＋ 小区域` + **当前区域名片**（名字/氛围/描述/「编辑」）+ 小区域列表\n   - 右上角 `＋` 新建区域，抽屉里可选「挂在哪一级下面」，**默认选中你当前所在的层级**\n   - 右上角 `⋯`：编辑 / 删除当前区域\n   - 退回是**一层层退**（不是直接跳回顶层），符合\"我刚刚从哪进来的\"直觉\n\n4. **删除级联**：删区域时连带它下面所有小区域（两段式确认），删完退回上一级\n\n**动了哪些文件**\n| 文件 | 改动 |\n|---|---|\n| `index.html` | 书房「地点」占位行 → 「地图」行；新增 `view-regions`（面包屑 / 名片 / 列表三块） |\n| `app.js` | A 区加 `regions`（`defaultDB` + `loadDB`）；C 区 `renderBook` 加地图计数；新增 **K5 区**（`openRegions` / `renderRegions` / `enterRegion` / `exitRegion` / `openRegionSheet` / `newRegion` / `deleteRegionCascade` / `regionPath` / `regionDescendantIds`） |\n| `style.css` | 新增第 15 节：当前区域名片（`.rg-here*`）；列表复用 `.row`、面包屑复用 `.ev-crumb` |\n| `tests/smoke3.js` | 新增：地图 40 项冒烟测试 |\n\n**最容易出 bug 的地方**\n1. **区域挂到自己下面（死循环）** → `regionPath()` 有 `guard` 上限；编辑时用 `regionDescendantIds()` 排除自己和子孙\n2. **面包屑路径断掉** → 靠 `parentId` 一路往上拼，中间某条被删就会断，所以 `renderRegions()` 开头有\"当前区域不存在就退回顶层\"的兜底\n3. **退回层级错乱** → `exitRegion()` 是\"退到当前区域的父级\"，不是回顶层\n4. **计数不更新** → 新建/删除后要同时调 `renderRegions()` 和 `renderBook()`\n5. **名字为空** → 不创建（否则列表里一堆\"未命名区域\"）\n\n**已知未做**\n- 地图的**视觉化**（现在是层级列表，不是能缩放拖动的图）\n- 区域 ↔ 事件的关联（\"这件事发生在城南旧桥\"）\n- 区域 ↔ 角色（\"他住在哪\"）\n- 调整层级（把已有区域挪到别的上级下面）\n\n---\n\n## v0.7 · 事件库两级化 + 老虎机自动吸附 + 删除书籍（本次）\n\n**改了什么**\n\n1. **事件库从\"平铺卡片流\"改成\"两级结构\"**（核心变化）\n   - 数据结构：每条事件加 `parentId`（空字符串 = 顶层/主线，有值 = 挂在某条下面）\n   - 层级**不限制深度**：主线 → 子事件 → 孙事件都合法（靠 `parentId` 递归）\n   - **谁是主线由作者自己定**，软件不自动判断；一本书可以有好几条并列主线\n   - 老数据（没有 `parentId` 字段）自动按顶层处理，**不用迁移**\n   - 理由：原来所有事件平铺在一起，一本书写到后期几十条挤成一堆，没法打理\n\n2. **第一屏：主线大卡**\n   - 进事件库先看到一张张「主线大卡」：状态 / 标题 / 起因 / 影响 / 参与者 / \"N 条子事件\"\n   - 点大卡才进入它下面的子事件\n\n3. **第二屏：老虎机（子事件）**\n   - 顶部面包屑：`‹ 全部主线` + 当前主线名 + `＋ 子事件` + `⋯`（删这条主线）\n   - 中间是仿真老虎机的滚动窗（见第 4 条）\n   - 底部：事件详情（**先用骨架占位**，等以后装修）\n\n4. **老虎机手感：滚动自动吸附选中** ★\n   - 滚动时每帧找**离中线最近**的卡片，自动点亮它并更新底部详情\n   - 停稳时补一次（`scrollend`，不支持的浏览器退回 130ms 防抖）+ 轻震\n   - `slotLock` 锁：点击卡片触发的平滑滚动期间（420ms），自动选择让路，避免自己跟自己打架\n\n5. **凸起质感（仿真实老虎机）**\n   - 三层叠出立体：外框上亮下暗（金属罩）+ 凹槽内阴影（弧面）+ 一道斜扫玻璃高光（`::after`）\n   - 卡片带轻微 `rotateX(3deg)`，像贴在弧面玻璃后面；选中时回正 + 放大 + 投影\n\n6. **删除书籍**（新功能）\n   - 入口：书房右上角 `⋯` → 抽屉里显示\"这本书的 N 个角色、N 章正文、N 条事件会一起删掉，不能恢复\"\n   - **两段式确认**：第一次点变红，第二次才真删\n   - 按 `bookId` **级联删除**角色 / 章节 / 事件，不留孤儿数据；删完退回大厅\n\n7. **键盘不再挡住正文**（修 bug）\n   - 章节正文区加 `padding-bottom: var(--kb)`，键盘弹起时底部让出空间\n   - `applyKB()` 里加 `keepEditorVisible()`：光标超出可视区时自动把内容往上滚\n\n**动了哪些文件**\n| 文件 | 改动 |\n|---|---|\n| `index.html` | 事件视图重构成三块（`#evTop` / `#evBranch` / `#eventDetail`）；书房加 `⋯`；事件页加 `⋯` |\n| `app.js` | K4 区整体重写（`renderEvTop` / `enterEvBranch` / `bindSlotAutoSelect` / `pickCenteredCard` / `deleteEventCascade` / `openBranchMenu` / `openNewEventSheet` / `newEvent`）；新增 L3 区（删除书籍）；M 区加 `keepEditorVisible` |\n| `style.css` | 第 14 节重写：主线大卡、面包屑、老虎机外壳（凸起）、骨架屏；新增 `.btn-danger`、`.del-warn` |\n\n**最容易出 bug 的地方**\n1. **切屏不生效** → `hidden` 属性被 `display:flex` 盖掉了。已加 `#evTop[hidden] { display:none !important }`\n2. **滚动选中乱跳** → 点击卡片的平滑滚动会触发自动选择。查 `slotLock`\n3. **删主线把子事件留成孤儿** → 必须走 `deleteEventCascade()`，不能直接 `filter`\n4. **新建事件挂错层级** → 抽屉里的 `<select id=\"evParentPick\">` 决定 `parentId`；在主线列表里建默认是\"新主线\"\n5. **键盘高度算成 0** → 公式是 `innerHeight - vv.height - vv.offsetTop`，三个都要，少一个就错\n\n**已知未做**\n- 事件详情面板（现在只有骨架）\n- 主事件之间/子事件之间的因果关系连线（`causeEventIds` / `effectEventIds` 还没用起来）\n- 章节总结自动回填事件状态\n- 导出 / 导入 JSON\n\n**文档同步（本次）**\n| 文档 | 改了什么 |\n|---|---|\n| `MAP.md` | 重写：10 个视图、K4 内部地图（14 个函数逐个标行号）、`parentId` 数据模型、上下文变量表、修改索引 20+ 条、bug 排查 16 条 |\n| `事件.md` | 新增 2.4 层级（`parentId`）；第六节按两级界面重写；Q5 定案；新增第九节\"还没做的\" |\n| `DESIGN.md` | 新增决策 9（事件两级，主线由作者定） |\n| `TEST.md` | 版本更新；新增第 9 节（事件库 30 项）、第 10 节（删除书籍 9 项）；第 8 节补键盘 3 项 |\n| `ISSUES.md` | 新增问题 4~7（hidden 被 display 盖、自动选中打架、无 scrollend、无 rAF）；优化 5（详情装修）、优化 6（jsdom 冒烟脚本） |\n| `NOTES.md` | 新增原理 14~17（键盘高度公式、scroll-snap 与选中、hidden 与 display、凸起靠光影）；原则 16；对话索引补 11~14 |\n| `README.md` | 状态表更新到 v0.7 |\n\n**怎么快速回归（不用手机）**\n```bash\nnode tests/smoke.js    # 主流程 33 项\nnode tests/smoke2.js   # 层级 / 级联 16 项\n```\n脚本说明见 `ISSUES.md` 优化 6。\n\n---\n\n## v0.6 · 章节 + 审稿 + 整卡体检\n\n**改了什么**\n\n1. **章节模块**（你自己写，AI 辅助）\n   - 书房：原来的三个占位合并成「章节」入口 → 章节列表 → 新建章节\n   - 章节详情：**章标题 / 本章要发生什么（备忘）/ 正文编辑框**\n   - 正文框旁有 💡，右上角实时显示字数\n   - 数据结构：`chapters: [{ id, bookId, title, goal, text, order }]`\n\n2. **审稿（AI 当编辑）** —— 灯泡新增「审稿」动作\n   - AI 只提建议，**不改写**\n   - 五类问题分色标注：🔴语法用词 / 🔵文风不符 / 🟠描写缺失 / 🟣设定冲突 / 🟢节奏重复\n   - 正文里问题片段按类上色（红=删除线、蓝=下划线、橙=波浪线、紫=点线、绿=虚线）\n   - 每条建议一张卡片：原文（红删除线）→ 建议（绿底）→ 原因 →「接受 / 忽略」\n   - 接受后**只替换那一个片段**，其它不动\n   - 点正文里的色块可跳到对应卡片\n\n3. **角色整卡体检**（角色详情页右上角 🩺）\n   - **先检查**：只挑毛病不动笔，四类——🔴矛盾 / 🟠笼统 / 🔵缺项 / 🟣冲突\n   - **再润色**：只改**表达类**字段（一句话人设/外貌/性格/说话方式/备注），\n     **设定类字段一律不动**（身份/别名/想要什么/弱点/秘密）——防止 AI 改跑你的剧情\n   - 润色逐条接受，另有「全部接受」\n\n**动了哪些文件**\n| 文件 | 改动 |\n|---|---|\n| `index.html` | 书房三个占位合成章节入口；新增 `view-chapterlist`、`view-chapter`；角色详情加 🩺；弹层加「审稿」 |\n| `app.js` | A 区加 `chapters`；C 区 `renderBook` 加章节数；新增 K2b（整卡体检）、K3（章节+审稿） |\n| `style.css` | 第 11 节：审稿面板、五色标注、问题卡片、正文输入框 |\n\n**最容易出 bug 的地方**\n1. **审稿报\"不是 JSON\"** → 模型没按格式返回。换个听话的模型，或在提示词里加一句\"只输出 JSON\"\n2. **正文没有标色** → AI 返回的 `quote` 与原文不完全一致，`indexOf` 找不到。建议把 quote 限制在 10~40 字\n3. **接受修改后位置错了** → 同文里有重复片段时只会替换第一处\n4. **润色把设定改了** → 检查 `POLISH_FIELDS` / `SETTING_FIELDS`；设定类不允许进润色\n5. **章节字数不动** → `updateWordCount()` 只在 `text` 输入时调用\n\n**已知未做**\n- 事件卡工作台（现在只有\"本章要发生什么\"一句话备忘）\n- 章节总结、下一章建议\n- 关系链、出场记录、对话室、`@` 引用、地点/道具/事件/伏笔\n- 导出导入\n\n---\n\n## v0.5 · 写得出来 + AI 读得到\n\n**改了什么**\n\n1. **示例建议**（解决\"不知道怎么下笔\"）\n   - 每个字段下面有一行淡灰的「示例：……」，点一下就填进框里\n   - 已有内容时不覆盖，接在后面另起一行\n   - 示例内容在 `FIELD_HINTS`（`app.js`）\n\n2. **外貌构造器**（只在\"外貌\"这一栏）\n   - 外貌标签旁多一个「详细构造」按钮 → 打开抽屉\n   - 分 7 类点选：发型 / 眉眼 / 鼻嘴 / 脸型 / 身材 / 服饰 / 鞋子\n   - 点选后**自动拼成一句话**，可预览、可再手改，点「填进外貌」写回\n   - **每类末尾有 `＋`，可以自己加词**，加过的词存进 `db.lookCustom`，下次还在\n\n3. **AI 能读到整张角色卡**（解决\"AI 不知道我写过什么\"）\n   - 每次调用自动注入角色卡：名字、别名、身份、外貌、性格、说话方式、想要什么、弱点、秘密、备注\n   - **跳过正在写的那一项**（它已在原文里）\n   - **空字段不发送**（省 token，也避免 AI 把\"空白\"当设定）\n   - 所以在提示词里可以直接写\"参考角色的身份生成服饰\"\n   - 想自己控制位置，就在提示词里写 `{{角色卡}}`（此时不再自动追加）\n\n**动了哪些文件**\n| 文件 | 改动 |\n|---|---|\n| `app.js` | 新增 `FIELD_HINTS`、`LOOK_PARTS`、`CHAR_FIELD_LABELS`、`buildCharCard()`；`fieldBlock()` 加示例行与「详细构造」；新增 `openLookBuilder()`；`buildSystemPrompt()` 重写（注入角色卡 + 书名 + 当前项） |\n| `style.css` | 第 10 节：示例行、`＋` 加词行、构造器分组 |\n| `提示词.md` | 新增「角色卡会自动喂给 AI」一节 + `{{角色卡}}` 变量 |\n\n**数据结构新增**\n```json\n{ \"lookCustom\": { \"发型\": [\"络腮胡\"], \"服饰\": [\"蓑衣\"] } }\n```\n\n**最容易出 bug 的地方**\n1. **AI 好像没看到身份** → 检查该字段是否为空（空的不发）；或提示词里写了 `{{角色卡}}` 但位置不对\n2. **加了词没保存** → `db.lookCustom` 是否写入；`saveDB()` 是否调用\n3. **构造器拼出来的语序乱** → 语序固定按「类→词」顺序拼，改顺序要改 `LOOK_PARTS`\n4. **示例点一下没反应** → `data-fill` 绑定；`FIELD_HINTS` 里有没有这个 key\n\n---\n\n## v0.4 · 接入真 AI\n\n**改了什么**\n- **灯泡接上真模型**：`runAI()` 从\"假示例\"换成真的 `fetch` 调用（OpenAI 兼容格式）\n- **三层提示词**：全局（输出规则）／场景（按字段）／任务（按按钮），拼好后发给模型\n- **提示词就近可调**：点灯泡 → 弹层底部「⚙ 调这一项」→ 就地改当前场景的提示词，保存即生效\n- **AI 设置页**：大厅右上角 ⚙，填 接口地址 / 模型名 / API Key，带「测试连接」\n- 密钥只存 `localStorage`，**代码里一个字都没有**（将来上 GitHub 不会泄露）\n- 多候选改为**并发请求 N 次**（不依赖接口支持 `n` 参数），所以 3 条候选 = 3 倍耗时与费用\n\n**动了哪些文件**\n| 文件 | 改动 |\n|---|---|\n| `index.html` | 大厅加 ⚙；新增 `view-settings`；灯泡弹层加「⚙ 调这一项」 |\n| `app.js` | A 区加 `defaultPrompts()` / `mergePrompts()` / `SCENE_LABELS`；F 区整体重写为真调用（`buildSystemPrompt`/`callAIOnce`/`runAI`）；新增 K2 区（提示词编辑 + 设置页） |\n| `style.css` | 新增第 9 节：弹层\"调提示词\"按钮、设置页说明文字 |\n| `提示词.md` | 新增：三层结构与各场景默认提示词 |\n\n**数据结构新增**\n```json\n{\n  \"prompts\": { \"global\": \"…\", \"scenes\": { \"char.appearance\": \"…\" }, \"tasks\": { \"polish\": \"…\" } },\n  \"api\":     { \"baseUrl\": \"https://…/v1\", \"model\": \"deepseek-chat\", \"key\": \"sk-…\" }\n}\n```\n- 老数据自动补齐：`mergePrompts()` 把缺的提示词键用默认值填上，不用手动迁移\n\n**最容易出 bug 的地方（排查顺序）**\n1. **AI 没反应/报错** → 先看 F12 Console；设置页点「测试连接」最快\n2. **404** → 接口地址要填到 `/v1` 结尾，**不要**带 `/chat/completions`\n3. **401/403** → Key 错，或中转站没这个模型\n4. **输出带\"好的，以下是…\"** → 全局提示词加\"不要开场白\"（点灯泡 → ⚙）\n5. **采用后没写进框** → `adoptResult()` 的选择器（必须限定 textarea/input）\n6. **弹层位置** → `togglePopoverAt()` 里的 `w/h` 常量（加了\"调提示词\"那行后高度变大）\n\n**已知未做**\n- 通用 AI 目标抽象（`activeTarget`）——现在仍用 `activeField`，只支持角色字段；\n  将来接\"正文/总结\"时再重构\n- 正文 / 章节总结 / 对话室 / 关系链 / `@` 引用\n- 导出导入备份\n\n---\n\n## v0.3 · 角色模块\n\n**改了什么**\n- 素材库从「大厅」搬到「书房」，并按书隔离（素材属于书）\n- 主角/配角/反派/龙套 合并为统一的「角色」类型，用 `category` 字段分类\n- 新增角色列表页（按分类分组）与角色详情页（折叠区块）\n- 灯泡从\"固定在描述旁\"改成**浮动跟随**：点哪个字段的灯泡，就作用在哪个字段\n\n**动了哪些文件**\n| 文件 | 改动 |\n|---|---|\n| `index.html` | 重写骨架：去掉大厅素材库；书房加素材库入口；新增 `view-charlist`、`view-chardetail`；灯泡弹层移到 body 级（浮动） |\n| `app.js` | A 区数据层重写（characters）；C 区 renderHome 重写 + openBook/renderBook；D/E 区整体替换为角色列表/详情；F 区 runAI/adoptResult 改为\"作用于当前字段\"；I 区扩写改用当前字段 |\n| `style.css` | 新增第 8 节：分组标题、归属标签、折叠区块、浮动弹层 |\n\n**数据结构（v0.3）**\n```json\n{\n  \"books\": [{\"id\",\"title\",\"chapters\",\"genre\"}],\n  \"characters\": [{\n    \"id\",\"bookId\",\"name\",\"aliases\",\"category\",\n    \"identity\",\"oneLine\",\"appearance\",\"personality\",\"speech\",\n    \"want\",\"flaw\",\"secret\",\"notes\"\n  }],\n  \"styles\": [{\"id\",\"title\",\"prompt\"}]\n}\n```\n\n**旧数据迁移**\n- 启动时若发现旧版 `materials` 且没有 `characters`，自动把 `type` 为 主角/配角 的素材转成角色\n- 迁移后 `bookId` 默认 `b1`（公共素材也归到 b1）\n- ⚠️ 地点/道具/事件 类素材**不会迁移**（目前没有对应模块），仍留在旧数据里但不显示\n\n**最容易出 bug 的地方（排查顺序）**\n1. **灯泡作用于哪个字段** → `activeField` 变量；点灯泡时被设为 `btn.dataset.field`\n2. **采用后写回哪个字段** → `adoptResult()` 里读 `activeField`\n3. **浮动弹层位置** → `togglePopoverAt()` 用 `getBoundingClientRect()` 算坐标\n4. **角色不显示** → 检查 `c.bookId === currentBookId`；迁移过来的角色 bookId 可能是 `b1`\n5. **列表分组空** → 检查 `c.category` 是否等于四个分类之一\n6. **返回后列表不刷新** → `goBack()` 里的 `renderCharList()` / `renderBook()`\n\n**已知未做**\n- 行为规则表 `rules`（情境→反应→台词）\n- 角色对话室（双轨）\n- 关系链（章节+原因）、出场记录双源校验\n- `@` 正文引用\n- 真 AI 接入\n\n---\n\n## v0.2 · 功能补齐\n\n- 多方案生成（扩写/其他，默认 3 条，1~5 可调）\n- 扩写目标字数（默认 800）\n- 字段级\"清空\"\n- 拆文件：`index.html` / `style.css` / `app.js`\n- 修：拼音输入卡死（composition 事件）\n- 修：按钮文字贴边（`.btn` 加 padding + width）\n\n---\n\n## v0.1 · 初版骨架\n\n- 大厅（书架）→ 书房 两页结构\n- 毛玻璃视觉、清晨天空背景\n- 素材库（通用类型）＋ 素材详情 ＋ 就地 AI（假数据）\n- 风格库（4 字标题 + 提示词，多选叠加）\n- localStorage 存储\n";
+
+/* 按「## 」切成一个个版本 */
+function parseChangelog(md) {
+  return String(md).split(/\n(?=## )/)
+    .filter(p => /^## /.test(p))
+    .map(p => {
+      const lines = p.split('\n');
+      return { title: lines[0].replace(/^## /, '').trim(), body: lines.slice(1) };
+    });
+}
+
+/* 行内：先转义，再补粗体 / 行内代码（顺序不能反，否则会把 HTML 放进来） */
+function inlineMd(s) {
+  return esc(s)
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+}
+
+/* 一个版本的正文：只认 列表 / 引用 / 表格 / 小标题 / 段落 */
+function mdBlockHtml(lines) {
+  const out = [];
+  let list = [];
+  const flush = () => {
+    if (list.length) {
+      out.push('<ul>' + list.map(x => '<li>' + inlineMd(x) + '</li>').join('') + '</ul>');
+      list = [];
+    }
+  };
+  lines.forEach(raw => {
+    const line = raw.replace(/\s+$/, '');
+    if (/^\s*-\s+/.test(line)) { list.push(line.replace(/^\s*-\s+/, '')); return; }
+    flush();
+    const t = line.trim();
+    if (!t || /^-{3,}$/.test(t)) return;
+    if (/^\|/.test(t)) {
+      if (/^\|[\s:|-]+\|?$/.test(t)) return;          /* 表格分隔线 */
+      const cells = t.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => inlineMd(c.trim()));
+      out.push('<div class="cl-row">' + cells.join(' · ') + '</div>');
+      return;
+    }
+    if (/^>/.test(t)) { out.push('<div class="cl-quote">' + inlineMd(t.replace(/^>\s?/, '')) + '</div>'); return; }
+    if (/^#{3,}\s/.test(t)) { out.push('<div class="cl-h">' + inlineMd(t.replace(/^#+\s/, '')) + '</div>'); return; }
+    out.push('<p>' + inlineMd(t) + '</p>');
+  });
+  flush();
+  return out.join('');
+}
+
+function renderChangelog() {
+  const box = document.getElementById('changelogBody');
+  if (!box) return;
+  const list = parseChangelog(CHANGELOG_MD);
+  if (!list.length) {
+    box.innerHTML = '<div class="empty">没有找到更新日志。</div>';
+    return;
+  }
+  box.innerHTML = `
+    <div class="cl-tools">
+      <button class="link-btn" id="clOpenAll" type="button">全部展开</button>
+      <button class="link-btn" id="clCloseAll" type="button">全部收起</button>
+    </div>
+  ` + list.map((sec, i) => `
+    <details class="cl-item" ${i === 0 ? 'open' : ''}>
+      <summary>${i === 0 ? '<span class="cl-ver">最新</span>' : ''}${inlineMd(sec.title)}</summary>
+      <div class="cl-body">${mdBlockHtml(sec.body)}</div>
+    </details>
+  `).join('');
+
+  const setAll = open => box.querySelectorAll('details.cl-item').forEach(d => { d.open = open; });
+  box.querySelector('#clOpenAll').addEventListener('click', () => setAll(true));
+  box.querySelector('#clCloseAll').addEventListener('click', () => setAll(false));
+}
+
+function openChangelog() {
+  renderChangelog();
+  showView('view-changelog');
+}
+
+document.getElementById('openChangelogBtn').addEventListener('click', openChangelog);
 
 /* ============================================================
    L. 新建书籍

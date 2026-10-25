@@ -307,6 +307,22 @@
 </div>
 
 <!-- ============================================================
+     视图 · 更新日志（设置 → 更新日志）
+     ============================================================ -->
+<div class="view" id="view-changelog">
+  <header class="app-header">
+    <div class="header-left">
+      <button class="back-btn" data-back type="button">‹ 返回</button>
+      <div class="app-title">更新日志</div>
+    </div>
+  </header>
+  <main class="content">
+    <div class="sheet-sub" style="margin:0 2px 12px;line-height:1.8;">每一版修了什么、加了什么。点开看细节，最上面是最新的。</div>
+    <div id="changelogBody"></div>
+  </main>
+</div>
+
+<!-- ============================================================
      视图 7 · 风格库
      ============================================================ -->
 <div class="view" id="view-styles">
@@ -400,6 +416,11 @@
     <div class="panel" style="margin-top:14px;">
       <div class="panel-label">功能使用统计 <span class="hint">看哪些功能真的在用</span></div>
       <div id="usageBox"></div>
+    </div>
+
+    <div class="panel" style="margin-top:14px;">
+      <div class="panel-label">更新日志 <span class="hint">修了什么、加了什么</span></div>
+      <button class="btn btn-ghost" id="openChangelogBtn" type="button">📜 查看更新日志</button>
     </div>
 
     <div class="panel" style="margin-top:14px;">
