@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>我的小说工作台</title>
+
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ============================================================
+     视图 1 · 大厅（书架 + 风格库）
+     ============================================================ -->
+<div class="view active" id="view-home">
+  <header class="app-header">
+    <div class="app-title">我的小说工作台</div>
+    <button class="icon-btn" id="openSettings" type="button">⚙</button>
+  </header>
+
+  <main class="content">
+    <!-- 书架 -->
+    <section class="panel">
+      <div class="panel-label">我的书籍 <span class="hint">点书进入写作</span></div>
+      <div class="shelf-grid" id="shelfGrid"><!-- JS 生成 --></div>
+    </section>
+
+    <!-- 风格库入口 -->
+    <section class="panel">
+      <div class="panel-label">风格库 <span class="hint" id="styleCount"></span></div>
+      <button class="row" id="openStyleLib" type="button">
+        <span class="row-icon">🎨</span>
+        <span class="row-main">
+          <span class="row-title">管理风格</span>
+          <span class="row-sub">新建 / 编辑风格提示词</span>
+        </span>
+        <span class="row-arrow">›</span>
+      </button>
+    </section>
+  </main>
+</div>
+
+<!-- ============================================================
+     视图 2 · 书房
+     ============================================================ -->
+<div class="view" id="view-book">
+  <header class="app-header">
+    <div class="header-left">
+      <button class="back-btn" data-back type="button">‹ 返回</button>
+      <div class="app-title" id="bookTitle">未命名</div>
+    </div>
+    <div class="header-right">
+      <span class="genre-tag" id="bookGenre"></span>
+      <button class="icon-btn" id="bookMenuBtn" type="button" title="书籍设置">⋯</button>
+    </div>
+  </header>
+  <main class="content">
+    <!-- 素材库（属于这本书） -->
+    <section class="panel">
+      <div class="panel-label">素材库 <span class="hint">这本书专用</span></div>
+
+      <button class="row" id="openCharList" type="button">
+        <span class="row-icon">👥</span>
+        <span class="row-main">
+          <span class="row-title">角色</span>
+          <span class="row-sub">主角 / 配角 / 反派 / 龙套</span>
+        </span>
+        <span class="book-tag" id="charCount">0 人</span>
+        <span class="row-arrow">›</span>
+      </button>
+
+      <button class="row" id="openRegions" type="button">
+        <span class="row-icon">🗺️</span>
+        <span class="row-main">
+          <span class="row-title">地图</span>
+          <span class="row-sub">区域 → 小区域，一层层往下分</span>
+        </span>
+        <span class="book-tag" id="regionCount">0 处</span>
+        <span class="row-arrow">›</span>
+      </button>
+      <button class="row" id="openItems" type="button">
+        <span class="row-icon">🗡️</span>
+        <span class="row-main">
+          <span class="row-title">道具</span>
+          <span class="row-sub">按分类摆开，横向翻</span>
+        </span>
+        <span class="book-tag" id="itemCount">0 件</span>
+        <span class="row-arrow">›</span>
+      </button>
+      <button class="row" id="openEventLib" type="button">
+        <span class="row-icon">⚡</span>
+        <span class="row-main">
+          <span class="row-title">事件</span>
+          <span class="row-sub">剧情发展的骨架</span>
+        </span>
+        <span class="book-tag" id="eventCount">0 条</span>
+        <span class="row-arrow">›</span>
+      </button>
+      <button class="row" id="openForeshadows" type="button" style="margin-bottom:0;">
+        <span class="row-icon">🧵</span>
+        <span class="row-main">
+          <span class="row-title">伏笔</span>
+          <span class="row-sub">埋了什么还没填</span>
+        </span>
+        <span class="book-tag" id="foreCount">0 个</span>
+        <span class="row-arrow">›</span>
+      </button>
+    </section>
+
+    <section class="panel">
+      <div class="panel-label">设定 <span class="hint">写下来，AI 才不会违反</span></div>
+      <button class="row" id="openRules" type="button">
+        <span class="row-icon">🌐</span>
+        <span class="row-main">
+          <span class="row-title">世界规则</span>
+          <span class="row-sub">这本书不能违反的规则（如：无魔法）</span>
+        </span>
+        <span class="row-arrow">›</span>
+      </button>
+    </section>
+
+    <section class="panel" style="margin-bottom:0;">
+      <div class="panel-label">正文 <span class="hint">你自己写，AI 帮你审</span></div>
+
+      <button class="row" id="openChapterList" type="button">
+        <span class="row-icon">📄</span>
+        <span class="row-main">
+          <span class="row-title">章节</span>
+          <span class="row-sub">新建 / 继续写</span>
+        </span>
+        <span class="book-tag" id="chapterCount">0 章</span>
+        <span class="row-arrow">›</span>
+      </button>
+
+      <button class="row row-disabled" type="button" disabled style="margin-bottom:0;">
+        <span class="row-icon">📝</span>
+        <span class="row-main">
+          <span class="row-title">本章总结</span>
+          <span class="row-sub">即将支持</span>
+        </span>
+      </button>
+    </section>
+  </main>
+</div>
+
+<!-- ============================================================
+     视图 3 · 角色列表
+     ============================================================ -->
+<div class="view" id="view-charlist">
+  <header class="app-header">
+    <div class="header-left">
+      <button class="back-btn" data-back type="button">‹ 返回</button>
+      <div class="app-title" id="charListTitle">角色</div>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="icon-btn" id="genCharBtn" type="button" aria-label="AI 创建角色">✨</button>
+      <button class="icon-btn" id="addCharBtn" type="button">＋</button>
+    </div>
+  </header>
+  <main class="content" id="charListBody"></main>
+</div>
+
+<!-- ============================================================
+     视图 4 · 角色详情
+     ============================================================ -->
+<div class="view" id="view-chardetail">
+  <header class="app-header">
+    <div class="header-left">
+      <button class="back-btn" data-back type="button">‹ 返回</button>
+      <div class="app-title" id="charDetailTitle">角色</div>
+    </div>
+    <button class="icon-btn" id="charCheckBtn" type="button" title="整卡体检">🩺</button>
+  </header>
+
+  <main class="content">
+    <div id="charDetailBody"></div>
+    <div id="resultsWrap"></div>
+  </main>
+</div>
+
+<!-- ============================================================
+     视图 4b · 事件库（老虎机卡片流）
+     ============================================================ -->
+<div class="view" id="view-events">
+  <header class="app-header">
+    <div class="header-left">
+      <button class="back-btn" data-back type="button">‹ 返回</button>
+      <div class="app-title">事件</div>
+    </div>
+    <button class="icon-btn" id="evBranchMenu" type="button" title="这条主线">⋯</button>
+    <button class="icon-btn" id="addEventLibBtn" type="button">＋</button>
+  </header>
+
+  <main class="content" id="eventsMain">
+    <!-- 筛选（只在钻进某条主线后出现） -->
+    <div class="ev-filters" id="evFilters" hidden></div>
+
+    <!-- 第一屏：主线大卡列表 -->
+    <div id="evTop"></div>
+
+    <!-- 第二屏：某条主线下面的老虎机 -->
+    <div id="evBranch" hidden>
+      <div class="ev-crumb">
+        <button class="ev-crumb-btn" id="evBackTop" type="button">‹ 全部主线</button>
+        <span class="ev-crumb-title" id="evCrumbTitle"></span>
+        <button class="ev-crumb-btn" id="evAddChild" type="button">＋ 子事件</button>
+      </div>
+
+      <div class="slot-wrap">
+        <div class="slot-track" id="slotTrack"></div>
+        <div class="slot-pointer"></div>
+      </div>
+    </div>
+
+    <!-- 详情区（骨架占位，后续装修） -->
+    <div id="eventDetail"></div>
+  </main>
+</div>
+
+<!-- ============================================================
+     视图 4c · 地图（区域层级：大陆 → 国家 → 城市 → 场景）
+     ============================================================ -->
+<div class="view" id="view-regions">
+  <header class="app-header">
+    <div class="header-left">
+      <button class="back-btn" data-back type="button">‹ 返回</button>
+      <div class="app-title" id="regionTitle">地图</div>
+    </div>
+    <button class="icon-btn" id="rgMenuBtn" type="button" title="当前区域" hidden>⋯</button>
+    <button class="icon-btn" id="addRegionBtn" type="button">＋</button>
+  </header>
+
+  <main class="content" id="regionsMain">
+    <!-- 面包屑（钻进某个区域后出现） -->
+    <div class="ev-crumb" id="rgCrumb" hidden>
+      <button class="ev-crumb-btn" id="rgBackBtn" type="button">‹ 上一级</button>
+      <span class="ev-crumb-title" id="rgCrumbTitle"></span>
+      <button class="ev-crumb-btn" id="rgAddChild" type="button">＋ 小区域</button>
+    </div>
+
+    <!-- 当前区域名片（钻进后出现） -->
+    <div id="rgHere"></div>
+
+    <!-- 区域列表 -->
+    <div id="rgList"></div>
+  </main>
+</div>
+
+<!-- ============================================================
+     视图 4d · 道具（按分类分组，横向排列）
+     ============================================================ -->
+<div class="view" id="view-items">
+  <header class="app-header">
+    <div class="header-left">
+      <button class="back-btn" data-back type="button">‹ 返回</button>
+      <div class="app-title">道具</div>
+    </div>
+    <button class="icon-btn" id="addItemBtn" type="button">＋</button>
+  </header>
+  <main class="content" id="itemsBody"></main>
+</div>
+
+<!-- ============================================================
+     视图 4e · 伏笔（回收清单）
+     ============================================================ -->
+<div class="view" id="view-foreshadows">
+  <header class="app-header">
+    <div class="header-left">
+      <button class="back-btn" data-back type="button">‹ 返回</button>
+      <div class="app-title">伏笔</div>
+    </div>
+    <button class="icon-btn" id="addForeBtn" type="button">＋</button>
+  </header>
+  <main class="content" id="foreBody"></main>
+</div>
+
+<!-- ============================================================
+     视图 5 · 章节列表
+     ============================================================ -->
+<div class="view" id="view-chapterlist">
+  <header class="app-header">
+    <div class="header-left">
+      <button class="back-btn" data-back type="button">‹ 返回</button>
+      <div class="app-title" id="chapterListTitle">章节</div>
+    </div>
+    <button class="icon-btn" id="addChapterBtn" type="button">＋</button>
+  </header>
+  <main class="content" id="chapterListBody"></main>
+</div>
+
+<!-- ============================================================
+     视图 6 · 章节详情（工作台 + 正文 + 审稿）
+     ============================================================ -->
+<div class="view" id="view-chapter">
+  <header class="app-header">
+    <div class="header-left">
+      <button class="back-btn" data-back type="button">‹ 返回</button>
+      <div class="app-title" id="chapterTitle">第 1 章</div>
+    </div>
+    <span class="genre-tag" id="chapterWords">0 字</span>
+  </header>
+
+  <main class="content">
+    <div id="chapterBody"></div>
+    <div id="reviewWrap"></div>
+  </main>
+</div>
+
+<!-- ============================================================
+     视图 7 · 风格库
+     ============================================================ -->
+<div class="view" id="view-styles">
+  <header class="app-header">
+    <div class="header-left">
+      <button class="back-btn" data-back type="button">‹ 返回</button>
+      <div class="app-title">风格库</div>
+    </div>
+    <button class="icon-btn" id="addStyleBtn" type="button">＋</button>
+  </header>
+  <main class="content" id="styleListBody"></main>
+</div>
+
+<!-- ============================================================
+     视图 6 · 新建风格
+     ============================================================ -->
+<div class="view" id="view-stylenew">
+  <header class="app-header">
+    <div class="header-left">
+      <button class="back-btn" data-back type="button">‹ 返回</button>
+      <div class="app-title">新建风格</div>
+    </div>
+  </header>
+  <main class="content">
+    <div class="field">
+      <div class="field-label">
+        <span>标题</span>
+        <span class="char-count" id="titleCount">0 / 4</span>
+      </div>
+      <!-- 故意不加 maxlength：否则打拼音时字母占额度，中文会被卡死 -->
+      <input class="field-input name-input" id="styleTitleInput" type="text" placeholder="四个字以内，如：冷峻">
+    </div>
+    <div class="field">
+      <div class="field-label"><span>风格提示词</span></div>
+      <textarea class="field-input" id="stylePromptInput" rows="6"
+        placeholder="例如：短句为主，克制情绪，不写内心独白，用环境和动作暗示情绪"></textarea>
+    </div>
+    <button class="btn btn-primary" id="saveStyleBtn" type="button">保存</button>
+  </main>
+</div>
+
+<!-- ============================================================
+     视图 7 · AI 设置
+     ============================================================ -->
+<div class="view" id="view-settings">
+  <header class="app-header">
+    <div class="header-left">
+      <button class="back-btn" data-back type="button">‹ 返回</button>
+      <div class="app-title">AI 设置</div>
+    </div>
+  </header>
+  <main class="content">
+    <div class="panel">
+      <div class="panel-label">中转站 / 接口 <span class="hint">只存在你自己的设备里</span></div>
+
+      <div class="field">
+        <div class="field-label"><span>接口地址</span></div>
+        <input class="field-input" id="apiBaseUrl" type="url"
+          placeholder="https://你的中转站/v1" autocapitalize="off" autocomplete="off">
+      </div>
+
+      <div class="field">
+        <div class="field-label"><span>模型名</span></div>
+        <input class="field-input" id="apiModel" type="text"
+          placeholder="例如 deepseek-chat" autocapitalize="off" autocomplete="off">
+      </div>
+
+      <div class="field" style="margin-bottom:0;">
+        <div class="field-label"><span>API Key</span></div>
+        <input class="field-input" id="apiKey" type="password"
+          placeholder="sk-..." autocomplete="off">
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-ghost" id="testApi" type="button">测试连接</button>
+      <button class="btn btn-primary" id="saveApi" type="button">保存</button>
+    </div>
+
+    <div id="apiResult" class="empty" style="padding:18px 8px;"></div>
+
+    <div class="panel" style="margin-top:14px;">
+      <div class="panel-label">数据备份 <span class="hint">存一份到 iCloud / 换设备用</span></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-ghost" id="exportBtn" type="button">导出 .json</button>
+        <button class="btn btn-ghost" id="importBtn" type="button">导入 .json</button>
+      </div>
+      <input type="file" id="importFile" accept=".json,application/json" style="display:none;">
+    </div>
+
+    <div class="panel" style="margin-top:14px;">
+      <div class="panel-label">功能使用统计 <span class="hint">看哪些功能真的在用</span></div>
+      <div id="usageBox"></div>
+    </div>
+
+    <div class="panel" style="margin-top:14px;">
+      <div class="panel-label">说明</div>
+      <div class="empty" style="text-align:left;padding:0;line-height:1.9;">
+        · 接口地址填到 <b>/v1</b> 结尾（不要带 <b>/chat/completions</b>）<br>
+        · 密钥存在浏览器 localStorage，不会上传到任何地方<br>
+        · 将来放 GitHub 也不会泄露，因为代码里没有它
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- 灯泡弹层（浮动，跟着被点的灯泡走） -->
+<div class="popover floating" id="bulbMenu">
+  <button data-act="polish" type="button">润色</button>
+  <button data-act="expand" type="button">扩写</button>
+  <button data-act="style" type="button">风格</button>
+  <button data-act="other" type="button">其他</button>
+  <button data-act="review" type="button">审稿</button>
+  <button data-act="peek" class="tune-btn" type="button">👁 看这次会发给 AI 什么</button>
+  <button data-act="tune" class="tune-btn" type="button">⚙ 调这一项的提示词</button>
+</div>
+
+<!-- 底部抽屉 -->
+<div class="sheet-backdrop" id="sheetBackdrop"></div>
+<div class="sheet" id="sheet">
+  <div class="sheet-handle"></div>
+  <div id="sheetBody"></div>
+</div>
+
+
+  <script src="app.js"></script>
+</body>
+</html>
